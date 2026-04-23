@@ -18,21 +18,35 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  /* Prevent horizontal scroll globally */
+  overflow-x: hidden; 
+  /* Ensure the width is exactly the device width */
+  width: 100%;
   background:
     radial-gradient(circle at top left, rgba(200, 92, 57, 0.16), transparent 24%),
     radial-gradient(circle at top right, rgba(97, 122, 85, 0.18), transparent 28%),
     linear-gradient(180deg, #f8f3ea 0%, #efe3cf 100%);
   color: var(--text);
   font-family: var(--font-space-grotesk), sans-serif;
+}
+
+* {
+  max-width: 100%;
+}
+
+input, select, textarea, button {
+  touch-action: manipulation;
 }
 
 a {
