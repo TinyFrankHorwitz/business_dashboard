@@ -214,6 +214,76 @@ function TrashIcon() {
   );
 }
 
+function SpinnerIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin fill-none stroke-current stroke-[2]">
+      <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
+      <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ConfirmModal({
+  type,
+  name,
+  onConfirm,
+  onCancel,
+  isDeleting
+}: {
+  type: "job" | "customer" | "note";
+  name: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  const typeLabels = { job: "job", customer: "customer", note: "note" };
+  const typeColors = { job: "text-[#a64141]", customer: "text-[#a64141]", note: "text-[#a64141]" };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-[28px] bg-white p-5 shadow-[0_30px_80px_rgba(16,23,21,0.25)]">
+        <h3 className="text-lg font-semibold text-[#101715]">Confirm deletion</h3>
+        <p className="mt-3 text-sm text-[#66736d]">
+          Are you sure you want to delete this {typeLabels[type]}?
+          <span className={classNames("mt-2 block font-medium", typeColors[type])}>
+            "{name}"
+          </span>
+          {type === "customer" && (
+            <span className="mt-2 block text-xs text-[#9a6b12]">
+              This will also delete all related jobs and notes.
+            </span>
+          )}
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="flex-1 rounded-full bg-[#b24545] px-4 py-3 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {isDeleting ? (
+              <span className="flex items-center justify-center gap-2">
+                <SpinnerIcon />
+                Deleting...
+              </span>
+            ) : (
+              "Delete"
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="flex-1 rounded-full bg-[#f2f4f1] px-4 py-3 text-sm disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChevronIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -317,6 +387,17 @@ export function AppShell() {
   const [noteDraft, setNoteDraft] = useState(newNoteSeed);
   const [isHydrating, setIsHydrating] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [isSavingJob, setIsSavingJob] = useState(false);
+  const [isSavingCustomer, setIsSavingCustomer] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isDeletingJob, setIsDeletingJob] = useState<string | null>(null);
+  const [isDeletingCustomer, setIsDeletingCustomer] = useState<string | null>(null);
+  const [isDeletingNote, setIsDeletingNote] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: "job" | "customer" | "note";
+    id: string;
+    name: string;
+  } | null>(null);
 
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null;
   const focusedCustomerId = selectedJob?.customerId ?? selectedCustomerId;
@@ -478,6 +559,8 @@ export function AppShell() {
       return;
     }
 
+    setIsSavingJob(true);
+
     if (storageMode === "database") {
       try {
         const nextJob = await requestJson<Job>("/api/jobs", {
@@ -491,13 +574,14 @@ export function AppShell() {
         setShowJobForm(false);
         setJobDraft(newJobSeed);
         setErrorMessage("");
-        return;
       } catch (error) {
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to create the job."
         );
-        return;
+      } finally {
+        setIsSavingJob(false);
       }
+      return;
     }
 
     const nextJob: Job = {
@@ -521,9 +605,19 @@ export function AppShell() {
     setSelectedStatus("all");
     setShowJobForm(false);
     setJobDraft(newJobSeed);
+    setIsSavingJob(false);
   }
 
-  async function deleteJob(jobId: string) {
+  function requestDeleteJob(jobId: string, jobTitle: string) {
+    setDeleteConfirm({ type: "job", id: jobId, name: jobTitle });
+  }
+
+  async function confirmDeleteJob() {
+    if (!deleteConfirm || deleteConfirm.type !== "job") return;
+    const jobId = deleteConfirm.id;
+    setIsDeletingJob(jobId);
+    setDeleteConfirm(null);
+
     if (storageMode === "database") {
       try {
         await requestJson<{ ok: true }>(`/api/jobs/${jobId}`, {
@@ -534,17 +628,21 @@ export function AppShell() {
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to delete the job."
         );
+        setIsDeletingJob(null);
         return;
       }
     }
 
-    setJobs((current) => current.filter((job) => job.id !== jobId));
+setJobs((current) => current.filter((job) => job.id !== jobId));
+    setIsDeletingJob(null);
   }
 
   async function addCustomer() {
     if (!customerDraft.name || !customerDraft.phone) {
       return;
     }
+
+    setIsSavingCustomer(true);
 
     if (storageMode === "database") {
       try {
@@ -559,13 +657,14 @@ export function AppShell() {
         setShowCustomerForm(false);
         setCustomerDraft(newCustomerSeed);
         setErrorMessage("");
-        return;
       } catch (error) {
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to create the customer."
         );
-        return;
+      } finally {
+        setIsSavingCustomer(false);
       }
+      return;
     }
 
     const nextCustomer: Customer = {
@@ -585,6 +684,7 @@ export function AppShell() {
     setSelectedCustomerId(nextCustomer.id);
     setShowCustomerForm(false);
     setCustomerDraft(newCustomerSeed);
+    setIsSavingCustomer(false);
   }
 
   async function persistCustomer(customerId: string) {
@@ -615,7 +715,16 @@ export function AppShell() {
     }
   }
 
-  async function deleteCustomer(customerId: string) {
+  function requestDeleteCustomer(customerId: string, customerName: string) {
+    setDeleteConfirm({ type: "customer", id: customerId, name: customerName });
+  }
+
+  async function confirmDeleteCustomer() {
+    if (!deleteConfirm || deleteConfirm.type !== "customer") return;
+    const customerId = deleteConfirm.id;
+    setIsDeletingCustomer(customerId);
+    setDeleteConfirm(null);
+
     if (storageMode === "database") {
       try {
         await requestJson<{ ok: true }>(`/api/customers/${customerId}`, {
@@ -626,6 +735,7 @@ export function AppShell() {
         setErrorMessage(
           error instanceof Error ? error.message : "Failed to delete the customer."
         );
+        setIsDeletingCustomer(null);
         return;
       }
     }
@@ -633,62 +743,7 @@ export function AppShell() {
     setCustomers((current) => current.filter((customer) => customer.id !== customerId));
     setJobs((current) => current.filter((job) => job.customerId !== customerId));
     setNotes((current) => current.filter((note) => note.customerId !== customerId));
-  }
-
-  async function addNote() {
-    if (!noteDraft.title || !noteDraft.detail) {
-      return;
-    }
-
-    if (storageMode === "database") {
-      try {
-        const nextNote = await requestJson<InternalNote>("/api/notes", {
-          method: "POST",
-          body: JSON.stringify(noteDraft)
-        });
-
-        setNotes((current) => [nextNote, ...current]);
-        setShowNoteForm(false);
-        setNoteDraft(newNoteSeed);
-        setErrorMessage("");
-        return;
-      } catch (error) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "Failed to create the note."
-        );
-        return;
-      }
-    }
-
-    const nextNote: InternalNote = {
-      id: `NOTE-${Date.now().toString().slice(-3)}`,
-      title: noteDraft.title,
-      detail: noteDraft.detail,
-      type: noteDraft.type,
-      customerId: noteDraft.customerId || undefined
-    };
-
-    setNotes((current) => [nextNote, ...current]);
-    setShowNoteForm(false);
-    setNoteDraft(newNoteSeed);
-  }
-
-  async function deleteNote(noteId: string) {
-    if (storageMode === "database") {
-      try {
-        await requestJson<{ ok: true }>(`/api/notes/${noteId}`, {
-          method: "DELETE"
-        });
-        setErrorMessage("");
-      } catch (error) {
-        setErrorMessage(
-          error instanceof Error ? error.message : "Failed to delete the note."
-        );
-        return;
-      }
-    }
-
-    setNotes((current) => current.filter((note) => note.id !== noteId));
+    setIsDeletingCustomer(null);
   }
 
   function toggleNoteForm() {
@@ -706,8 +761,100 @@ export function AppShell() {
     });
   }
 
+  async function addNote() {
+    if (!noteDraft.title || !noteDraft.detail) {
+      return;
+    }
+
+    setIsSavingNote(true);
+
+    if (storageMode === "database") {
+      try {
+        const nextNote = await requestJson<InternalNote>("/api/notes", {
+          method: "POST",
+          body: JSON.stringify(noteDraft)
+        });
+
+        setNotes((current) => [nextNote, ...current]);
+        setShowNoteForm(false);
+        setNoteDraft(newNoteSeed);
+        setErrorMessage("");
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to create the note."
+        );
+      } finally {
+        setIsSavingNote(false);
+      }
+      return;
+    }
+
+    const nextNote: InternalNote = {
+      id: `NOTE-${Date.now().toString().slice(-3)}`,
+      title: noteDraft.title,
+      detail: noteDraft.detail,
+      type: noteDraft.type,
+      customerId: noteDraft.customerId || undefined
+    };
+
+    setNotes((current) => [nextNote, ...current]);
+    setShowNoteForm(false);
+    setNoteDraft(newNoteSeed);
+    setIsSavingNote(false);
+  }
+
+  function requestDeleteNote(noteId: string, noteTitle: string) {
+    setDeleteConfirm({ type: "note", id: noteId, name: noteTitle });
+  }
+
+  async function confirmDeleteNote() {
+    if (!deleteConfirm || deleteConfirm.type !== "note") return;
+    const noteId = deleteConfirm.id;
+    setIsDeletingNote(noteId);
+    setDeleteConfirm(null);
+
+    if (storageMode === "database") {
+      try {
+        await requestJson<{ ok: true }>(`/api/notes/${noteId}`, {
+          method: "DELETE"
+        });
+        setErrorMessage("");
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to delete the note."
+        );
+        setIsDeletingNote(null);
+        return;
+      }
+    }
+
+    setNotes((current) => current.filter((note) => note.id !== noteId));
+    setIsDeletingNote(null);
+  }
+
   return (
     <main className="min-h-screen w-full bg-[radial-gradient(circle_at_top_left,rgba(18,123,73,0.10),transparent_28%),linear-gradient(180deg,#f4f5f1_0%,#eef1ec_100%)] p-2 text-[#101715] sm:px-4 sm:py-4 xl:p-3">
+      {deleteConfirm && (
+        <ConfirmModal
+          type={deleteConfirm.type}
+          name={deleteConfirm.name}
+          onConfirm={
+            deleteConfirm.type === "job"
+              ? confirmDeleteJob
+              : deleteConfirm.type === "customer"
+                ? confirmDeleteCustomer
+                : confirmDeleteNote
+          }
+          onCancel={() => setDeleteConfirm(null)}
+          isDeleting={
+            deleteConfirm.type === "job"
+              ? isDeletingJob !== null
+              : deleteConfirm.type === "customer"
+                ? isDeletingCustomer !== null
+                : isDeletingNote !== null
+          }
+        />
+      )}
       <div className="mx-auto grid max-w-[1500px] grid-cols-1 gap-3 rounded-[36px] border border-white/70 bg-[rgba(255,255,255,0.56)] p-2 shadow-[0_30px_80px_rgba(16,23,21,0.09)] backdrop-blur sm:p-3 xl:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="rounded-[30px] bg-[#f7f8f5] p-3 sm:p-4 xl:min-h-[calc(100vh-48px)]">
           <div className="flex items-center gap-2 sm:gap-3">
@@ -891,14 +1038,23 @@ export function AppShell() {
                     <button
                       type="button"
                       onClick={() => void addJob()}
-                      className="rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white sm:px-6 sm:py-3"
+                      disabled={isSavingJob}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white disabled:opacity-50 sm:px-6 sm:py-3"
                     >
-                      Save job
+                      {isSavingJob ? (
+                        <>
+                          <SpinnerIcon />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save job"
+                      )}
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowJobForm(false)}
-                      className="rounded-full bg-[#f2f4f1] px-4 py-3 text-sm sm:px-6 sm:py-3"
+                      disabled={isSavingJob}
+                      className="rounded-full bg-[#f2f4f1] px-4 py-3 text-sm disabled:opacity-50 sm:px-6 sm:py-3"
                     >
                       Cancel
                     </button>
@@ -971,14 +1127,23 @@ export function AppShell() {
                     <button
                       type="button"
                       onClick={() => void addNote()}
-                      className="rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white sm:px-6 sm:py-3"
+                      disabled={isSavingNote}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white disabled:opacity-50 sm:px-6 sm:py-3"
                     >
-                      Save note
+                      {isSavingNote ? (
+                        <>
+                          <SpinnerIcon />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save note"
+                      )}
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowNoteForm(false)}
-                      className="rounded-full bg-[#f2f4f1] px-4 py-3 text-sm sm:px-6 sm:py-3"
+                      disabled={isSavingNote}
+                      className="rounded-full bg-[#f2f4f1] px-4 py-3 text-sm disabled:opacity-50 sm:px-6 sm:py-3"
                     >
                       Cancel
                     </button>
@@ -1166,8 +1331,9 @@ export function AppShell() {
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => void deleteJob(job.id)}
-                                  className="inline-flex items-center gap-2 rounded-full bg-[#fff2f2] px-3 py-2 text-sm text-[#a64141] sm:px-4 sm:py-3"
+                                  onClick={() => requestDeleteJob(job.id, job.title)}
+                                  disabled={isDeletingJob !== null}
+                                  className="inline-flex items-center gap-2 rounded-full bg-[#fff2f2] px-3 py-2 text-sm text-[#a64141] disabled:opacity-50 sm:px-4 sm:py-3"
                                 >
                                   <TrashIcon />
                                   Delete
@@ -1252,14 +1418,23 @@ export function AppShell() {
                           <button
                             type="button"
                             onClick={() => void addCustomer()}
-                            className="rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white sm:px-6 sm:py-3"
+                            disabled={isSavingCustomer}
+                            className="inline-flex items-center gap-2 rounded-full bg-[#0f6a3b] px-4 py-3 text-sm font-medium text-white disabled:opacity-50 sm:px-6 sm:py-3"
                           >
-                            Save client
+                            {isSavingCustomer ? (
+                              <>
+                                <SpinnerIcon />
+                                Saving...
+                              </>
+                            ) : (
+                              "Save client"
+                            )}
                           </button>
                           <button
                             type="button"
                             onClick={() => setShowCustomerForm(false)}
-                            className="rounded-full bg-white px-4 py-3 text-sm sm:px-6 sm:py-3"
+                            disabled={isSavingCustomer}
+                            className="rounded-full bg-white px-4 py-3 text-sm disabled:opacity-50 sm:px-6 sm:py-3"
                           >
                             Cancel
                           </button>
@@ -1277,8 +1452,9 @@ export function AppShell() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => void deleteCustomer(selectedCustomer.id)}
-                              className="rounded-full bg-[#fff2f2] px-3 py-2 text-xs font-medium text-[#a64141] sm:px-4 sm:py-3 sm:text-sm"
+                              onClick={() => requestDeleteCustomer(selectedCustomer.id, selectedCustomer.name)}
+                              disabled={isDeletingCustomer !== null}
+                              className="rounded-full bg-[#fff2f2] px-3 py-2 text-xs font-medium text-[#a64141] disabled:opacity-50 sm:px-4 sm:py-3 sm:text-sm"
                             >
                               Delete client
                             </button>
@@ -1388,8 +1564,9 @@ export function AppShell() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => void deleteNote(note.id)}
-                              className="rounded-full bg-white px-3 py-2 text-[#a64141] sm:px-4 sm:py-3"
+                              onClick={() => requestDeleteNote(note.id, note.title)}
+                              disabled={isDeletingNote !== null}
+                              className="rounded-full bg-white px-3 py-2 text-[#a64141] disabled:opacity-50 sm:px-4 sm:py-3"
                             >
                               <TrashIcon />
                             </button>
@@ -1478,8 +1655,9 @@ export function AppShell() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => void deleteCustomer(customer.id)}
-                        className="rounded-full bg-[#fff2f2] px-3 py-2 text-xs text-[#a64141] sm:px-4 sm:py-3 sm:text-sm"
+                        onClick={() => requestDeleteCustomer(customer.id, customer.name)}
+                        disabled={isDeletingCustomer !== null}
+                        className="rounded-full bg-[#fff2f2] px-3 py-2 text-xs text-[#a64141] disabled:opacity-50 sm:px-4 sm:py-3 sm:text-sm"
                       >
                         Delete
                       </button>
