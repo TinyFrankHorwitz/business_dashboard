@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  READ_ONLY
+}
+
+enum UserStatus {
+  APPROVED
+  PENDING_APPROVAL
+  BLOCKED
+}
+
+enum JobStatus {
+  NEW
+  CURRENT
+  PENDING
+  ENDED
+  DELIVERED
+  CANCELED
+}
+
+enum NoteType {
+  IDEA
+  TASK
+  REMINDER
+  IMPROVEMENT
+  PURCHASE
+}
+
+enum ProductAvailability {
+  AVAILABLE
+  MADE_TO_ORDER
+  PAUSED
+}
+
+model User {
+  id             String      @id @default(cuid())
+  email          String      @unique
+  name           String
+  passwordHash   String?
+  role           UserRole    @default(OPERATOR)
+  status         UserStatus  @default(PENDING_APPROVAL)
+  approvedAt     DateTime?
+  blockedAt      DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  createdJobs    Job[]       @relation("CreatedJobs")
+  createdNotes   InternalNote[] @relation("CreatedNotes")
+}
+
+model Customer {
+  id            String         @id @default(cuid())
+  name          String
+  phone         String
+  instagram     String?
+  address       String?
+  deliveryInfo  String?
+  preferences   String?
+  behaviorNotes String?
+  lastOrderAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  jobs          Job[]
+  notes         InternalNote[]
+}
+
+model Job {
+  id            String      @id @default(cuid())
+  orderNumber   String      @unique
+  title         String
+  productDetails String
+  quantity      Int         @default(1)
+  price         Decimal     @db.Decimal(10, 2)
+  deposit       Decimal     @default(0) @db.Decimal(10, 2)
+  remaining     Decimal     @default(0) @db.Decimal(10, 2)
+  deliveryDate  DateTime?
+  status        JobStatus   @default(NEW)
+  timelineNote  String?
+  requirements  String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  customerId    String
+  customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdById   String?
+  createdBy     User?       @relation("CreatedJobs", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model InternalNote {
+  id          String     @id @default(cuid())
+  title       String
+  detail      String
+  type        NoteType
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  customerId  String?
+  customer    Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?      @relation("CreatedNotes", fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model Product {
+  id               String              @id @default(cuid())
+  name             String
+  description      String
+  category         String?
+  colors           String[]
+  sizes            String[]
+  price            Decimal             @db.Decimal(10, 2)
+  productionTime   String?
+  availability     ProductAvailability @default(MADE_TO_ORDER)
+  imageUrls        String[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+}
+
+model InventoryItem {
+  id           String   @id @default(cuid())
+  material     String
+  color        String?
+  quantity     Decimal  @db.Decimal(10, 2)
+  unit         String   @default("unit")
+  minimum      Decimal  @db.Decimal(10, 2)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
